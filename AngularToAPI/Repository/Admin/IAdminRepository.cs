@@ -12,6 +12,7 @@ namespace AngularToAPI.Repository.Admin
 {
     public interface IAdminRepository
     {
+         Task<ApplicationUser> Login(string username, string password);
         Task<IEnumerable<ApplicationUser>> GetUsers();
         Task<ApplicationUser> AddUserAsync(AddUserModel model);
         Task<ApplicationUser> GetUserAsync(string id);
