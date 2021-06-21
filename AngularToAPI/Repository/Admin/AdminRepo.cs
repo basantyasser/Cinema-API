@@ -31,6 +31,14 @@ namespace AngularToAPI.Repository.Admin
             _roleManager = roleManager;
             _host = host;
         }
+         public async Task<ApplicationUser> Login(string email, string password)
+        {
+            var user = await _db.Users.FirstOrDefaultAsync(x => x.Email == email);
+            if (user == null)
+                return null;
+
+            return user; // auth successful
+        }
 
         public async Task<ApplicationUser> AddUserAsync(AddUserModel model)
         {
