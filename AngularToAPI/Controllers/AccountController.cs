@@ -8,7 +8,6 @@ using System.Threading.Tasks;
 using System.Web;
 using AngularToAPI.Models;
 using AngularToAPI.ModelViews;
-using AngularToAPI.Services;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
@@ -29,14 +28,18 @@ namespace AngularToAPI.Controllers
         private readonly UserManager<ApplicationUser> _manager;
         private readonly SignInManager<ApplicationUser> _signInManager;
         private readonly RoleManager<ApplicationRole> _roleManager;
+        private readonly IAdminRepository _repo;
+        private readonly IConfiguration _config;
 
         public AccountController(ApplicationDb db, UserManager<ApplicationUser> manage,
-            SignInManager<ApplicationUser> signInManager, RoleManager<ApplicationRole> roleManager)
+            SignInManager<ApplicationUser> signInManager, RoleManager<ApplicationRole> roleManager,IAdminRepository repo, IConfiguration config)
         {
             _db = db;
             _manager = manage;
             _signInManager = signInManager;
             _roleManager = roleManager;
+            _repo = repo;
+            _config = config;
         }
 
         [HttpPost]
@@ -67,23 +70,15 @@ namespace AngularToAPI.Controllers
                     Email = model.Email,
                     UserName = model.UserName
                 };
-
                 var result = await _manager.CreateAsync(user, model.Password);
                 if (result.Succeeded)
                 {
-                    ////http://localhost:58314/Account/RegistrationConfirm?ID=545435&Token=5435354gw34523
+
+                    //////http://localhost:58314/Account/RegistrationConfirm?ID=545435&Token=5435354gw34523
                     var token = await _manager.GenerateEmailConfirmationTokenAsync(user);
                     var encodeToken = Encoding.UTF8.GetBytes(token);
                     var newToken = WebEncoders.Base64UrlEncode(encodeToken);
-
-                    var confirmLink = $"http://localhost:4200/registerconfirm?ID={user.Id}&Token={newToken}";
-                    var txt = "Please confirm your registration at our sute";
-                    var link = "<a href=\"" + confirmLink + "\">Confirm registration</a>";
-                    var title = "Registration Confirm";
-                    if (await SendGridAPI.Execute(user.Email, user.UserName, txt, link, title))
-                    {
-                        return StatusCode(StatusCodes.Status200OK);
-                    }
+                    return StatusCode(StatusCodes.Status200OK);
                 }
                 else
                 {
@@ -136,9 +131,9 @@ namespace AngularToAPI.Controllers
                 return BadRequest(result.Errors);
             }
         }
-
         [HttpPost]
         [Route("Login")]
+
         public async Task<IActionResult> Login(LoginModel model)
         {
             await CreateRoles();
@@ -148,17 +143,8 @@ namespace AngularToAPI.Controllers
             var user = await _manager.FindByEmailAsync(model.Email);
             if (user == null)
                 return NotFound();
-            if (!user.EmailConfirmed)
-                return Unauthorized("لم يتم تأكيد البريد الالكتروني");
-            var userName = HttpContext.User.Identity.Name;
-            var id = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            if (id != null || userName != null)
-            {
-                return BadRequest($"user id:{id} is exists");
-            }
-
-            var result = await _signInManager.PasswordSignInAsync(user, model.Password, model.RememberMe, true);
-            if (result.Succeeded)
+            var result = await _repo.Login(model.Email.ToLower(), model.Password);
+            if (result !=null)
             {
                 if (await _roleManager.RoleExistsAsync("User"))
                 {
@@ -178,21 +164,7 @@ namespace AngularToAPI.Controllers
                 }
                 return Ok();
             }
-            else if (result.IsLockedOut)
-            {
-                return Unauthorized("نتيجة التسجيل الخاطئ تم حجب الحساب مؤقتا");
-            }
             return StatusCode(StatusCodes.Status204NoContent);
-        }
-
-        private async Task<string> GetRoleNameByUserId(string userId)
-        {
-            var userRole = await _db.UserRoles.FirstOrDefaultAsync(x => x.UserId == userId);
-            if (userRole != null)
-            {
-                return await _db.Roles.Where(x => x.Id == userRole.RoleId).Select(x => x.Name).FirstOrDefaultAsync();
-            }
-            return null;
         }
 
         private async Task CreateAdmin()
@@ -355,36 +327,7 @@ namespace AngularToAPI.Controllers
             return StatusCode(StatusCodes.Status400BadRequest);
         }
 
-        [HttpGet]
-        [Route("ForgetPassword/{email}")]
-        public async Task<IActionResult> ForgetPassword(string email)
-        {
-            if (email == null)
-            {
-                return NotFound();
-            }
-            var user = await _manager.FindByEmailAsync(email);
-            if (user == null)
-            {
-                return NotFound();
-            }
-
-            var token = await _manager.GeneratePasswordResetTokenAsync(user);
-            var encodeToken = Encoding.UTF8.GetBytes(token);
-            var newToken = WebEncoders.Base64UrlEncode(encodeToken);
-
-            var confirmLink = $"http://localhost:4200/passwordconfirm?ID={user.Id}&Token={newToken}";
-            var txt = "Please confirm password";
-            var link = "<a href=\"" + confirmLink + "\">Passowrd confirm</a>";
-            var title = "Passowrd confirm";
-            if (await SendGridAPI.Execute(user.Email, user.UserName, txt, link, title))
-            {
-                return new ObjectResult(new { token = newToken });
-            }
-
-            return StatusCode(StatusCodes.Status400BadRequest);
-        }
-
+       
         [HttpPost]
         [Route("ResetPassword")]
         public async Task<IActionResult> ResetPassword(ResetPasswordModel model)
